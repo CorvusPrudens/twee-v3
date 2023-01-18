@@ -1,29 +1,34 @@
 use std::{borrow::Cow, fmt::Display, ops::Deref};
 
+use metadata::{parse_metadata, Metadata};
 use nom::{
     branch::alt,
     bytes::complete::{escaped_transform, tag},
     character::{
         complete::none_of,
-        complete::{anychar, char, line_ending, one_of},
+        complete::{anychar, char, newline, space0},
     },
-    combinator::{map, opt, recognize},
-    multi::{many1_count, separated_list0},
-    sequence::{delimited, preceded},
+    combinator::{map, opt, recognize, value},
+    multi::{many1_count, separated_list0, separated_list1},
+    sequence::{delimited, pair, preceded},
     IResult,
 };
+
+mod metadata;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Passage<'a> {
     title: Cow<'a, str>,
     tags: Vec<Tag<'a>>,
+    metadata: Option<Metadata<'a>>,
 }
 
 impl<'a> Passage<'a> {
-    fn new(raw_title: &'a str, tags: Vec<Tag<'a>>) -> Self {
+    fn new(raw_title: &'a str, tags: Vec<Tag<'a>>, metadata: Option<Metadata<'a>>) -> Self {
         Self {
             title: escape_string_content(raw_title.trim_end()),
             tags,
+            metadata,
         }
     }
 }
@@ -78,16 +83,25 @@ pub fn parse_tags(input: &str) -> IResult<&str, Vec<Tag>> {
 }
 
 fn parse_title(input: &str) -> IResult<&str, &str> {
-    let title_block = recognize(many1_count(alt((parse_escaped_char, none_of("{[\n\r")))));
+    let parse_word = recognize(many1_count(alt((parse_escaped_char, none_of(" \n\r[{")))));
+
+    let title_block = recognize(separated_list1(tag(" "), value((), parse_word)));
 
     preceded(tag(":: "), title_block)(input)
 }
 
 pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
     let (input, title) = parse_title(input)?;
+    let (input, _) = space0(input)?;
     let (input, tags) = opt(parse_tags)(input)?;
+    let (input, _) = space0(input)?;
+    let (input, metadata) = opt(parse_metadata)(input)?;
+    let (input, _) = recognize(pair(space0, newline))(input)?;
 
-    Ok((input, Passage::new(title, tags.unwrap_or_else(|| vec![]))))
+    Ok((
+        input,
+        Passage::new(title, tags.unwrap_or_else(|| vec![]), metadata),
+    ))
 }
 
 fn escape_string_content(input: &str) -> Cow<str> {
@@ -107,7 +121,7 @@ fn escape_string_content(input: &str) -> Cow<str> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parse_passage, parse_tags, parse_title, Passage, Tag};
+    use crate::{metadata::Metadata, parse_passage, parse_tags, parse_title, Passage, Tag};
 
     #[test]
     fn test_tags() {
@@ -166,7 +180,7 @@ mod tests {
 
         assert_eq!(
             parse_title(story),
-            Ok(("[tag1 tag2]", "Hello, this is a title "))
+            Ok((" [tag1 tag2]", "Hello, this is a title"))
         );
     }
 
@@ -177,8 +191,8 @@ mod tests {
         assert_eq!(
             parse_title(input),
             Ok((
-                r#"{"position":"600,400","size":"100,200"}"#,
-                "Hello, this is a title "
+                r#" {"position":"600,400","size":"100,200"}"#,
+                "Hello, this is a title"
             ))
         );
     }
@@ -186,16 +200,31 @@ mod tests {
     #[test]
     fn test_title_start_with_whitespace() {
         let input = r":: \ Second [tag]";
-        assert_eq!(parse_title(input), Ok((r#"[tag]"#, r"\ Second ")));
+        assert_eq!(parse_title(input), Ok((r#" [tag]"#, r"\ Second")));
     }
 
     #[test]
     fn test_passage() {
-        let input = ":: Hello, this is a title [tag1 tag2]";
+        let input = ":: Hello, this is a title [tag1 tag2]\n";
 
         let expected = Passage::new(
             "Hello, this is a title",
             vec![Tag::new("tag1"), Tag::new("tag2")],
+            None,
+        );
+
+        assert_eq!(parse_passage(input), Ok(("", expected)));
+    }
+
+    #[test]
+    fn test_passage_tag_and_metadata() {
+        let input =
+            ":: Hello, this is a title [tag1 tag2] {\"position\":\"900,600\",\"size\":\"200,200\"}\n";
+
+        let expected = Passage::new(
+            "Hello, this is a title",
+            vec![Tag::new("tag1"), Tag::new("tag2")],
+            Some(Metadata::new(r#"{"position":"900,600","size":"200,200"}"#)),
         );
 
         assert_eq!(parse_passage(input), Ok(("", expected)));
