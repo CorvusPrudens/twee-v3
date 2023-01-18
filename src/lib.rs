@@ -1,5 +1,6 @@
 mod metadata;
 pub mod passage;
+pub mod story;
 mod utils;
 
 #[cfg(test)]

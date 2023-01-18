@@ -101,6 +101,7 @@ name = "twee-v3"
 version = "0.1.0"
 dependencies = [
  "nom",
+ "serde_json",
  "tweep",
 ]
 

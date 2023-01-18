@@ -28,7 +28,7 @@ pub struct Passage<'a> {
 impl<'a> Passage<'a> {
     fn new(raw_title: &'a str, tags: Vec<Tag<'a>>, metadata: Option<Metadata<'a>>) -> Self {
         Self {
-            title: escape_string_content(raw_title.trim_end()),
+            title: escape_string_content(raw_title),
             tags,
             metadata,
         }

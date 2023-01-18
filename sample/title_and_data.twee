@@ -1,0 +1,12 @@
+:: StoryTitle
+Test Story
+
+
+:: StoryData
+{
+  "ifid": "77599634-2586-46FA-875A-CBED8FC65433",
+  "format": "Harlowe",
+  "format-version": "3.3.4",
+  "start": "Start",
+  "zoom": 1
+}
