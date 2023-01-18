@@ -1,0 +1,38 @@
+:: StoryTitle
+Test
+
+
+:: StoryData
+{
+  "ifid": "77599634-2586-46FA-875A-CBED8FC65433",
+  "format": "Harlowe",
+  "format-version": "3.3.4",
+  "start": "Start",
+  "zoom": 1
+}
+
+
+:: First {"position":"500,400","size":"100,100"}
+This is another story.
+
+Let's go [[back->Start]]
+
+
+
+:: Second [name-test] {"position":"700,400","size":"200,200"}
+This is a second passage.
+Nothing to see here.
+
+Go [[first|First]]
+
+
+
+:: Start [osef\]] {"position":"600,150","size":"200,200"}
+Hello!
+[[First]]
+[[Going there->Second]]
+[[Third<-A third link]]
+
+
+:: Third {"position":"1000,400","size":"100,100"}
+This is a dead end
