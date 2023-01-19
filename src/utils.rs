@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::escaped_transform,
     character::complete::{anychar, char, none_of},
     error::{Error, ErrorKind, ParseError},
-    Err, IResult,
+    Err, IResult, Parser, Slice,
 };
 
 pub(crate) fn take_delimited_greedy(
@@ -55,6 +55,34 @@ pub(crate) fn take_delimited_greedy(
     }
 }
 
+pub fn take_until_pattern<'a, F>(mut f: F) -> impl FnMut(&'a str) -> IResult<&str, &str>
+where
+    F: Parser<&'a str, &'a str, Error<&'a str>>,
+{
+    move |i: &str| {
+        let input = i;
+        let mut count = 0;
+
+        loop {
+            let input_ = &input[count..];
+            let len = input_.len();
+            if len == 0 {
+                return Ok((input.slice(count..), input.slice(..count)));
+            }
+
+            match f.parse(input_) {
+                Ok(_) => {
+                    return Ok((input.slice(count..), input.slice(..count)));
+                }
+                Result::Err(Err::Error(_)) => {
+                    count += 1;
+                }
+                Result::Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
 pub(crate) fn escape_string_content(input: &str) -> Cow<str> {
     fn escape_replace(input: &str) -> IResult<&str, String> {
         escaped_transform(none_of(r"\"), '\\', anychar)(input)
@@ -67,5 +95,30 @@ pub(crate) fn escape_string_content(input: &str) -> Cow<str> {
         )
     } else {
         Cow::Borrowed(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nom::{bytes::complete::tag, character::complete::newline, sequence::preceded};
+
+    use crate::utils::take_until_pattern;
+
+    #[test]
+    fn test_take_until_pattern() {
+        let input = "This is a dog\n:: Test";
+
+        let mut parse = take_until_pattern(preceded(newline, tag("::")));
+
+        assert_eq!(parse(input), Ok(("\n:: Test", "This is a dog")));
+    }
+
+    #[test]
+    fn test_take_until_pattern_eof() {
+        let input = "This is a dog";
+
+        let mut parse = take_until_pattern(preceded(newline, tag("::")));
+
+        assert_eq!(parse(input), Ok(("", "This is a dog")));
     }
 }

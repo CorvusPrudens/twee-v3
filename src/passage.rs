@@ -5,7 +5,7 @@ use nom::{
     bytes::complete::tag,
     character::{
         complete::none_of,
-        complete::{anychar, char, newline, space0},
+        complete::{anychar, char, multispace0, newline, space0},
     },
     combinator::{map, opt, recognize, value},
     multi::{many1_count, separated_list0, separated_list1},
@@ -15,7 +15,7 @@ use nom::{
 
 use crate::{
     metadata::{parse_metadata, Metadata},
-    utils::escape_string_content,
+    utils::{escape_string_content, take_until_pattern},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,15 +23,26 @@ pub struct Passage<'a> {
     title: Cow<'a, str>,
     tags: Vec<Tag<'a>>,
     metadata: Option<Metadata<'a>>,
+    content: &'a str,
 }
 
 impl<'a> Passage<'a> {
-    fn new(raw_title: &'a str, tags: Vec<Tag<'a>>, metadata: Option<Metadata<'a>>) -> Self {
+    fn new(
+        raw_title: &'a str,
+        tags: Vec<Tag<'a>>,
+        metadata: Option<Metadata<'a>>,
+        content: &'a str,
+    ) -> Self {
         Self {
             title: escape_string_content(raw_title),
             tags,
             metadata,
+            content,
         }
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
     }
 }
 
@@ -92,6 +103,10 @@ fn parse_title(input: &str) -> IResult<&str, &str> {
     preceded(tag(":: "), title_block)(input)
 }
 
+fn parse_content(input: &str) -> IResult<&str, &str> {
+    take_until_pattern(preceded(newline, tag("::")))(input)
+}
+
 pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
     let (input, title) = parse_title(input)?;
     let (input, _) = space0(input)?;
@@ -99,10 +114,12 @@ pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
     let (input, _) = space0(input)?;
     let (input, metadata) = opt(parse_metadata)(input)?;
     let (input, _) = recognize(pair(space0, newline))(input)?;
+    let (input, content) = parse_content(input)?;
+    let (input, _) = multispace0(input)?;
 
     Ok((
         input,
-        Passage::new(title, tags.unwrap_or_default(), metadata),
+        Passage::new(title, tags.unwrap_or_default(), metadata, content),
     ))
 }
 
@@ -110,7 +127,7 @@ pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
 mod tests {
     use crate::{
         metadata::Metadata,
-        passage::{parse_passage, parse_tags, parse_title, Passage, Tag},
+        passage::{parse_content, parse_passage, parse_tags, parse_title, Passage, Tag},
     };
 
     #[test]
@@ -201,6 +218,7 @@ mod tests {
             "Hello, this is a title",
             vec![Tag::new("tag1"), Tag::new("tag2")],
             None,
+            "",
         );
 
         assert_eq!(parse_passage(input), Ok(("", expected)));
@@ -215,8 +233,27 @@ mod tests {
             "Hello, this is a title",
             vec![Tag::new("tag1"), Tag::new("tag2")],
             Some(Metadata::new(r#"{"position":"900,600","size":"200,200"}"#)),
+            "",
         );
 
         assert_eq!(parse_passage(input), Ok(("", expected)));
+    }
+
+    #[test]
+    fn test_passage_til_next() {
+        let input = ":: Some title\nHello\n\n:: Other title";
+
+        let result = parse_passage(input);
+
+        println!("{result:?}");
+    }
+
+    #[test]
+    fn osef() {
+        let input = "Hello\n\n:: Other title";
+
+        let result = parse_content(input);
+
+        println!("{result:?}");
     }
 }

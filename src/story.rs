@@ -14,7 +14,7 @@ use nom::{
 use serde_json::Value;
 
 use crate::{
-    passage::Passage,
+    passage::{parse_passage, Passage},
     utils::{escape_string_content, take_delimited_greedy},
 };
 
@@ -50,6 +50,7 @@ impl<'a> Story<'a> {
 enum StoryBlock<'a> {
     Title(Cow<'a, str>),
     StoryData(StoryData<'a>),
+    Passage(Passage<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -89,13 +90,14 @@ fn parse_story_block(input: &str) -> IResult<&str, StoryBlock> {
     alt((
         map(parse_story_title, StoryBlock::Title),
         map(parse_story_data, StoryBlock::StoryData),
+        map(parse_passage, StoryBlock::Passage),
     ))(input)
 }
 
 pub fn parse_story(input: &str) -> IResult<&str, Story> {
     let mut title = None;
     let mut start = None;
-    let passages = HashMap::new();
+    let mut passages = HashMap::new();
 
     let mut input = input;
     while !input.is_empty() {
@@ -103,6 +105,9 @@ pub fn parse_story(input: &str) -> IResult<&str, Story> {
         match block {
             StoryBlock::Title(extracted_title) => title = Some(extracted_title),
             StoryBlock::StoryData(extracted_start) => start = extracted_start.start,
+            StoryBlock::Passage(passage) => {
+                passages.insert(passage.title().to_string(), passage);
+            }
         }
         input = i;
     }
@@ -120,6 +125,8 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/sample/title_and_data.twee"
     ));
+
+    const SAMPLE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/sample/sample.twee"));
 
     #[test]
     fn test_parse_story_title() {
@@ -166,5 +173,19 @@ mod tests {
                 )
             ))
         )
+    }
+
+    #[test]
+    fn test_parse_whole_story() {
+        let input = SAMPLE;
+
+        let (remaining_input, story) = parse_story(input).unwrap();
+        assert_eq!(remaining_input, "");
+        assert_eq!(Some("Test Story"), story.title());
+        assert_eq!(Some("Start"), story.start());
+        assert_eq!(4, story.passages.len());
+
+        let start = &story.passages["Start"];
+        assert_eq!("Start", start.title());
     }
 }
