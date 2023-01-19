@@ -82,12 +82,8 @@ pub fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &'a str)
     let mut index = 0;
     let escaped_pat = format!("\\{pat}");
 
-    loop {
-        if let Some(position) = (&input[index..]).find_substring(&escaped_pat) {
-            index += position + 2;
-        } else {
-            break;
-        }
+    while let Some(position) = (&input[index..]).find_substring(&escaped_pat) {
+        index += position + 2;
     }
 
     if let Some(position) = (&input[index..]).find_substring(pat) {

@@ -1,10 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::{
-        complete::none_of,
-        complete::{anychar, char, multispace0, newline, space0},
-    },
+    character::complete::{anychar, char, multispace0, newline, none_of, space0},
     combinator::{map, opt, recognize, value},
     multi::{many1_count, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded},

@@ -1,8 +1,22 @@
+//! Parse twee-v3 text format, to a simple structures.
+//! .twee files can be generated with Twine.
+//! See [twee-3-specification.md](https://github.com/iftechfoundation/twine-specs/blob/master/twee-3-specification.md).
+//!
+//! ```rust
+//! fn main() {
+//!     let twee = "your twine content";
+//!
+//!     if let Ok(story) = twee_v3::Story::try_from(twee) {
+//!         println!("{:?}", story.title());
+//!     }
+//! }
+//! ```
+
 use std::{borrow::Cow, collections::HashMap, fmt::Display, ops::Deref};
 
-use parser::story::parse_story;
 use utils::escape_string_content;
 
+mod error;
 mod parser;
 mod utils;
 
@@ -126,16 +140,5 @@ impl<'a> Story<'a> {
 
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
-    }
-}
-
-impl<'a> TryFrom<&'a str> for Story<'a> {
-    type Error = nom::Err<nom::error::Error<&'a str>>;
-
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        match parse_story(value) {
-            Ok((_, story)) => Ok(story),
-            Result::Err(error) => Result::Err(error),
-        }
     }
 }
