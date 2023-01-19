@@ -78,7 +78,7 @@ pub(crate) fn until_link1(input: &str) -> IResult<&str, &str> {
     Ok(("", input))
 }
 
-pub fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &'a str)> {
+pub(crate) fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &'a str)> {
     let mut index = 0;
     let escaped_pat = format!("\\{pat}");
 
@@ -94,7 +94,7 @@ pub fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &'a str)
     }
 }
 
-pub fn take_until_pattern<'a, F>(mut f: F) -> impl FnMut(&'a str) -> IResult<&str, &str>
+pub(crate) fn take_until_pattern<'a, F>(mut f: F) -> impl FnMut(&'a str) -> IResult<&str, &str>
 where
     F: Parser<&'a str, &'a str, Error<&'a str>>,
 {

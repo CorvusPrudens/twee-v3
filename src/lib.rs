@@ -12,9 +12,11 @@
 
 use std::{borrow::Cow, collections::HashMap, fmt::Display, ops::Deref};
 
+use iter::LinkIterator;
 use utils::escape_string_content;
 
 mod error;
+mod iter;
 mod parser;
 mod utils;
 
@@ -55,6 +57,23 @@ impl<'a> Passage<'a> {
     pub fn title(&self) -> &str {
         &self.title
     }
+
+    pub fn nodes(&self) -> &[ContentNode] {
+        &self.content
+    }
+
+    pub fn links(&self) -> LinkIterator {
+        LinkIterator::new(&self.content)
+    }
+}
+
+impl<'a> Display for Passage<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for node in &self.content {
+            write!(f, "{node}")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -91,7 +110,7 @@ impl<'a> AsRef<str> for Tag<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum ContentNode<'a> {
+pub enum ContentNode<'a> {
     Text(Cow<'a, str>),
     Link {
         text: Cow<'a, str>,
@@ -108,6 +127,15 @@ impl<'a> ContentNode<'a> {
         Self::Link {
             text: escape_string_content(text),
             target: escape_string_content(target),
+        }
+    }
+}
+
+impl<'a> Display for ContentNode<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContentNode::Text(text) => write!(f, "{text}"),
+            ContentNode::Link { text, target: _ } => write!(f, "{text}"),
         }
     }
 }
@@ -132,6 +160,10 @@ impl<'a> Story<'a> {
         }
     }
 
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
     pub fn start(&self) -> Option<&Passage> {
         match &self.start {
             Some(start) => self.passages.get(&start[..]),
@@ -139,7 +171,7 @@ impl<'a> Story<'a> {
         }
     }
 
-    pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
+    pub fn get_passage(&self, name: &str) -> Option<&Passage> {
+        self.passages.get(name)
     }
 }
