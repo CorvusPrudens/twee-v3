@@ -15,7 +15,7 @@ use nom::{
 
 use crate::{
     metadata::{parse_metadata, Metadata},
-    utils::{escape_string_content, take_until_pattern},
+    utils::{escape_string_content, split_escaped, take_until_pattern, until_link1},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,7 +23,7 @@ pub struct Passage<'a> {
     title: Cow<'a, str>,
     tags: Vec<Tag<'a>>,
     metadata: Option<Metadata<'a>>,
-    content: &'a str,
+    content: Vec<ContentNode<'a>>,
 }
 
 impl<'a> Passage<'a> {
@@ -31,7 +31,7 @@ impl<'a> Passage<'a> {
         raw_title: &'a str,
         tags: Vec<Tag<'a>>,
         metadata: Option<Metadata<'a>>,
-        content: &'a str,
+        content: Vec<ContentNode<'a>>,
     ) -> Self {
         Self {
             title: escape_string_content(raw_title),
@@ -79,6 +79,28 @@ impl<'a> AsRef<str> for Tag<'a> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ContentNode<'a> {
+    Text(Cow<'a, str>),
+    Link {
+        text: Cow<'a, str>,
+        target: Cow<'a, str>,
+    },
+}
+
+impl<'a> ContentNode<'a> {
+    fn text_node(text: &'a str) -> Self {
+        Self::Text(escape_string_content(text))
+    }
+
+    fn link_node(text: &'a str, target: &'a str) -> Self {
+        Self::Link {
+            text: escape_string_content(text),
+            target: escape_string_content(target),
+        }
+    }
+}
+
 fn parse_escaped_char(input: &str) -> IResult<&str, char> {
     preceded(char('\\'), anychar)(input)
 }
@@ -103,8 +125,36 @@ fn parse_title(input: &str) -> IResult<&str, &str> {
     preceded(tag(":: "), title_block)(input)
 }
 
-fn parse_content(input: &str) -> IResult<&str, &str> {
+fn find_content_block(input: &str) -> IResult<&str, &str> {
     take_until_pattern(preceded(newline, tag("::")))(input)
+}
+
+fn parse_text_node(input: &str) -> IResult<&str, ContentNode> {
+    let (input, text) = until_link1(input)?;
+    Ok((input, ContentNode::text_node(text)))
+}
+
+fn parse_link_node<'a>(input: &'a str) -> IResult<&str, ContentNode> {
+    let parse_link_content = recognize(many1_count(alt((parse_escaped_char, none_of("\n\r]")))));
+
+    let (input, link_content) = delimited(tag("[["), parse_link_content, tag("]]"))(input)?;
+
+    let piped = |link_content| split_escaped(link_content, "|");
+    let to_right = |link_content| split_escaped(link_content, "->");
+    let to_left =
+        |link_content| split_escaped(link_content, "<-").map(|(target, text)| (text, target));
+    let simple = |link_content: &'a str| -> (&str, &str) { (link_content, link_content) };
+
+    let (text, target) = piped(link_content)
+        .or_else(|| to_right(link_content))
+        .or_else(|| to_left(link_content))
+        .unwrap_or_else(|| simple(link_content));
+
+    Ok((input, ContentNode::link_node(text, target)))
+}
+
+fn parse_node(input: &str) -> IResult<&str, ContentNode> {
+    alt((parse_text_node, parse_link_node))(input)
 }
 
 pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
@@ -114,21 +164,36 @@ pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
     let (input, _) = space0(input)?;
     let (input, metadata) = opt(parse_metadata)(input)?;
     let (input, _) = recognize(pair(space0, newline))(input)?;
-    let (input, content) = parse_content(input)?;
+    let (input, content) = find_content_block(input)?;
     let (input, _) = multispace0(input)?;
+
+    let mut nodes = vec![];
+    let mut content = content.trim_end_matches(&['\r', '\n']);
+    while !content.is_empty() {
+        let (c, node) = parse_node(content)?;
+        nodes.push(node);
+        content = c;
+    }
 
     Ok((
         input,
-        Passage::new(title, tags.unwrap_or_default(), metadata, content),
+        Passage::new(title, tags.unwrap_or_default(), metadata, nodes),
     ))
 }
 
 #[cfg(test)]
 mod tests {
+    use nom::{
+        error::{Error, ErrorKind, ParseError},
+        Err,
+    };
+
     use crate::{
         metadata::Metadata,
-        passage::{parse_content, parse_passage, parse_tags, parse_title, Passage, Tag},
+        passage::{find_content_block, parse_passage, parse_tags, parse_title, Passage, Tag},
     };
+
+    use super::{parse_link_node, parse_text_node, ContentNode};
 
     #[test]
     fn test_tags() {
@@ -218,7 +283,7 @@ mod tests {
             "Hello, this is a title",
             vec![Tag::new("tag1"), Tag::new("tag2")],
             None,
-            "",
+            vec![],
         );
 
         assert_eq!(parse_passage(input), Ok(("", expected)));
@@ -233,7 +298,7 @@ mod tests {
             "Hello, this is a title",
             vec![Tag::new("tag1"), Tag::new("tag2")],
             Some(Metadata::new(r#"{"position":"900,600","size":"200,200"}"#)),
-            "",
+            vec![],
         );
 
         assert_eq!(parse_passage(input), Ok(("", expected)));
@@ -249,11 +314,84 @@ mod tests {
     }
 
     #[test]
-    fn osef() {
+    fn test_find_content_block() {
         let input = "Hello\n\n:: Other title";
 
-        let result = parse_content(input);
+        let result = find_content_block(input);
 
-        println!("{result:?}");
+        assert_eq!(result, Ok(("\n:: Other title", "Hello\n")));
+    }
+
+    #[test]
+    fn test_parse_text_node() {
+        let input = "Hello\nThis is text[[link]]";
+
+        assert_eq!(
+            parse_text_node(input),
+            Ok(("[[link]]", ContentNode::text_node("Hello\nThis is text")))
+        );
+    }
+
+    #[test]
+    fn test_parse_text_node_escaped_bracket() {
+        let input = "Hello\nThis is text\\[[link]]";
+
+        assert_eq!(
+            parse_text_node(input),
+            Ok(("", ContentNode::text_node(input)))
+        );
+    }
+
+    #[test]
+    fn test_parse_text_node_is_link_node() {
+        let input = "[[link]]";
+
+        assert_eq!(
+            parse_text_node(input),
+            Err(Err::Error(Error::from_error_kind(
+                input,
+                ErrorKind::TakeUntil,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_parse_link_node_simple() {
+        let input = "[[link]]";
+
+        assert_eq!(
+            parse_link_node(input),
+            Ok(("", ContentNode::link_node("link", "link")))
+        )
+    }
+
+    #[test]
+    fn test_parse_link_node_pipe() {
+        let input = "[[first|First]]";
+
+        assert_eq!(
+            parse_link_node(input),
+            Ok(("", ContentNode::link_node("first", "First")))
+        )
+    }
+
+    #[test]
+    fn test_parse_link_node_to_right() {
+        let input = "[[some text->First page]]";
+
+        assert_eq!(
+            parse_link_node(input),
+            Ok(("", ContentNode::link_node("some text", "First page")))
+        )
+    }
+
+    #[test]
+    fn test_parse_link_node_to_left() {
+        let input = "[[A page<-going somewhere?]]";
+
+        assert_eq!(
+            parse_link_node(input),
+            Ok(("", ContentNode::link_node("going somewhere?", "A page")))
+        )
     }
 }

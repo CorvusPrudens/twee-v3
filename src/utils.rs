@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::escaped_transform,
     character::complete::{anychar, char, none_of},
     error::{Error, ErrorKind, ParseError},
-    Err, IResult, Parser, Slice,
+    Err, FindSubstring, IResult, Parser, Slice,
 };
 
 pub(crate) fn take_delimited_greedy(
@@ -42,7 +42,6 @@ pub(crate) fn take_delimited_greedy(
             };
             // We found the unmatched closing bracket.
             if bracket_counter == 0 {
-                // We do not consume it.
                 return Ok((&i[index..], &i[0..index]));
             };
         }
@@ -52,6 +51,50 @@ pub(crate) fn take_delimited_greedy(
         } else {
             Err(Err::Error(Error::from_error_kind(i, ErrorKind::TakeUntil)))
         }
+    }
+}
+
+pub(crate) fn until_link1(input: &str) -> IResult<&str, &str> {
+    let mut index = 0;
+
+    loop {
+        if let Some(position) = (&input[index..]).find_substring("\\[[") {
+            index += position + 2;
+        } else if let Some(position) = (&input[index..]).find_substring("[[") {
+            index += position;
+            return if index == 0 {
+                Err(Err::Error(Error::from_error_kind(
+                    input,
+                    ErrorKind::TakeUntil,
+                )))
+            } else {
+                Ok((&input[index..], &input[0..index]))
+            };
+        } else {
+            break;
+        }
+    }
+
+    Ok(("", input))
+}
+
+pub fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &'a str)> {
+    let mut index = 0;
+    let escaped_pat = format!("\\{pat}");
+
+    loop {
+        if let Some(position) = (&input[index..]).find_substring(&escaped_pat) {
+            index += position + 2;
+        } else {
+            break;
+        }
+    }
+
+    if let Some(position) = (&input[index..]).find_substring(pat) {
+        index += position;
+        Some((&input[..index], &input[index + pat.len()..]))
+    } else {
+        None
     }
 }
 
@@ -100,9 +143,17 @@ pub(crate) fn escape_string_content(input: &str) -> Cow<str> {
 
 #[cfg(test)]
 mod tests {
-    use nom::{bytes::complete::tag, character::complete::newline, sequence::preceded};
+    use nom::{
+        bytes::complete::tag,
+        character::complete::newline,
+        error::{Error, ErrorKind, ParseError},
+        sequence::preceded,
+        Err,
+    };
 
     use crate::utils::take_until_pattern;
+
+    use super::{split_escaped, until_link1};
 
     #[test]
     fn test_take_until_pattern() {
@@ -120,5 +171,67 @@ mod tests {
         let mut parse = take_until_pattern(preceded(newline, tag("::")));
 
         assert_eq!(parse(input), Ok(("", "This is a dog")));
+    }
+
+    #[test]
+    fn test_until_link1() {
+        let input = "This is a dog";
+
+        assert_eq!(until_link1(input), Ok(("", "This is a dog")));
+    }
+
+    #[test]
+    fn test_until_link1_has_brackets() {
+        let input = "This is a dog [[bob";
+
+        assert_eq!(until_link1(input), Ok(("[[bob", "This is a dog ")));
+    }
+
+    #[test]
+    fn test_until_link1_has_escaped_brackets() {
+        let input = "This is a dog \\[[bob";
+
+        assert_eq!(until_link1(input), Ok(("", "This is a dog \\[[bob")));
+    }
+
+    #[test]
+    fn test_until_link1_start_with_link() {
+        let input = "[[link]]";
+
+        assert_eq!(
+            until_link1(input),
+            Err(Err::Error(Error::from_error_kind(
+                input,
+                ErrorKind::TakeUntil,
+            )))
+        );
+    }
+
+    #[test]
+    fn test_split_escaped() {
+        let input = "hello->I'm happy";
+
+        assert_eq!(split_escaped(input, "->"), Some(("hello", "I'm happy")));
+    }
+
+    #[test]
+    fn test_split_escaped_no_match() {
+        let input = "hello->I'm happy";
+
+        assert_eq!(split_escaped(input, "|"), None);
+    }
+
+    #[test]
+    fn test_split_escaped_actually_escaped() {
+        let input = "hello\\->I'm happy";
+
+        assert_eq!(split_escaped(input, "->"), None);
+    }
+
+    #[test]
+    fn test_split_escaped_actually_escaped_proper_skip() {
+        let input = "hello\\--I'm happy";
+
+        assert_eq!(split_escaped(input, "-"), Some(("hello\\-", "I'm happy")));
     }
 }

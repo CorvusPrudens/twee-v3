@@ -47,6 +47,17 @@ impl<'a> Story<'a> {
     }
 }
 
+impl<'a> TryFrom<&'a str> for Story<'a> {
+    type Error = nom::Err<nom::error::Error<&'a str>>;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        match parse_story(value) {
+            Ok((_, story)) => Ok(story),
+            Result::Err(error) => Result::Err(error),
+        }
+    }
+}
+
 enum StoryBlock<'a> {
     Title(Cow<'a, str>),
     StoryData(StoryData<'a>),
