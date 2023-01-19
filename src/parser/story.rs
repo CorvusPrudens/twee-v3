@@ -154,7 +154,7 @@ mod tests {
         let (remaining_input, story) = parse_story(input).unwrap();
         assert_eq!(remaining_input, "");
         assert_eq!(Some("Test Story"), story.title());
-        assert_eq!(Some("Start"), story.start());
+        assert_eq!(Some("Start"), story.start().map(|passage| passage.title()));
         assert_eq!(4, story.passages.len());
 
         let start = &story.passages["Start"];

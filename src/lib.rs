@@ -3,12 +3,10 @@
 //! See [twee-3-specification.md](https://github.com/iftechfoundation/twine-specs/blob/master/twee-3-specification.md).
 //!
 //! ```rust
-//! fn main() {
-//!     let twee = "your twine content";
+//! let twee = "your twine content";
 //!
-//!     if let Ok(story) = twee_v3::Story::try_from(twee) {
-//!         println!("{:?}", story.title());
-//!     }
+//! if let Ok(story) = twee_v3::Story::try_from(twee) {
+//!     println!("{:?}", story.title());
 //! }
 //! ```
 
@@ -134,8 +132,11 @@ impl<'a> Story<'a> {
         }
     }
 
-    pub fn start(&self) -> Option<&str> {
-        self.start.as_deref()
+    pub fn start(&self) -> Option<&Passage> {
+        match &self.start {
+            Some(start) => self.passages.get(&start[..]),
+            None => None,
+        }
     }
 
     pub fn title(&self) -> Option<&str> {
