@@ -1,4 +1,5 @@
-//! Parse twee-v3 text format, to a simple structures.
+//! Parse the twee 3 interactive fiction format to simple structures.
+//!
 //! .twee files can be generated with Twine.
 //! See [twee-3-specification.md](https://github.com/iftechfoundation/twine-specs/blob/master/twee-3-specification.md).
 //!
@@ -16,7 +17,7 @@ use iter::LinkIterator;
 use utils::escape_string_content;
 
 mod error;
-mod iter;
+pub mod iter;
 mod parser;
 mod utils;
 
