@@ -18,7 +18,7 @@ fn main() {
     }
 
     let start = Instant::now();
-    let _story = twee_v3::story::Story::try_from(SAMPLE).unwrap();
+    let _story = twee_v3::Story::try_from(SAMPLE).unwrap();
     let duration = start.elapsed();
 
     println!("Time elapsed in twee-v3() is: {:?}", duration);

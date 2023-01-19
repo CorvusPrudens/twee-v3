@@ -1,19 +1,8 @@
 use nom::IResult;
 
-use crate::utils::take_delimited_greedy;
+use crate::{utils::take_delimited_greedy, Metadata};
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Metadata<'a> {
-    content: &'a str,
-}
-
-impl<'a> Metadata<'a> {
-    pub(crate) fn new(content: &'a str) -> Self {
-        Self { content }
-    }
-}
-
-pub fn parse_metadata(input: &str) -> IResult<&str, Metadata> {
+pub(crate) fn parse_metadata(input: &str) -> IResult<&str, Metadata> {
     let (input, content) = take_delimited_greedy('{', '}')(input)?;
     Ok((input, Metadata::new(content)))
 }
@@ -40,9 +29,7 @@ mod tests {
     fn test_metadata_reminder() {
         let input = r#"{"position":"900,600","size":"200,200"} and some other stuff"#;
 
-        let expected_metadata = Metadata {
-            content: r#"{"position":"900,600","size":"200,200"}"#,
-        };
+        let expected_metadata = Metadata::new(r#"{"position":"900,600","size":"200,200"}"#);
 
         assert_eq!(
             parse_metadata(input),

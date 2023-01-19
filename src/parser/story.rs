@@ -14,49 +14,10 @@ use nom::{
 use serde_json::Value;
 
 use crate::{
-    passage::{parse_passage, Passage},
+    parser::passage::parse_passage,
     utils::{escape_string_content, take_delimited_greedy},
+    Passage, Story,
 };
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Story<'a> {
-    title: Option<Cow<'a, str>>,
-    start: Option<Cow<'a, str>>,
-    passages: HashMap<String, Passage<'a>>,
-}
-
-impl<'a> Story<'a> {
-    fn new(
-        title: Option<Cow<'a, str>>,
-        start: Option<Cow<'a, str>>,
-        passages: HashMap<String, Passage<'a>>,
-    ) -> Self {
-        Self {
-            title,
-            start,
-            passages,
-        }
-    }
-
-    pub fn start(&self) -> Option<&str> {
-        self.start.as_deref()
-    }
-
-    pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
-    }
-}
-
-impl<'a> TryFrom<&'a str> for Story<'a> {
-    type Error = nom::Err<nom::error::Error<&'a str>>;
-
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        match parse_story(value) {
-            Ok((_, story)) => Ok(story),
-            Result::Err(error) => Result::Err(error),
-        }
-    }
-}
 
 enum StoryBlock<'a> {
     Title(Cow<'a, str>),

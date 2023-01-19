@@ -1,5 +1,3 @@
-use std::{borrow::Cow, fmt::Display, ops::Deref};
-
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -14,92 +12,10 @@ use nom::{
 };
 
 use crate::{
-    metadata::{parse_metadata, Metadata},
-    utils::{escape_string_content, split_escaped, take_until_pattern, until_link1},
+    parser::metadata::parse_metadata,
+    utils::{split_escaped, take_until_pattern, until_link1},
+    ContentNode, Passage, Tag,
 };
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Passage<'a> {
-    title: Cow<'a, str>,
-    tags: Vec<Tag<'a>>,
-    metadata: Option<Metadata<'a>>,
-    content: Vec<ContentNode<'a>>,
-}
-
-impl<'a> Passage<'a> {
-    fn new(
-        raw_title: &'a str,
-        tags: Vec<Tag<'a>>,
-        metadata: Option<Metadata<'a>>,
-        content: Vec<ContentNode<'a>>,
-    ) -> Self {
-        Self {
-            title: escape_string_content(raw_title),
-            tags,
-            metadata,
-            content,
-        }
-    }
-
-    pub fn title(&self) -> &str {
-        &self.title
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Tag<'a> {
-    value: Cow<'a, str>,
-}
-
-impl<'a> Display for Tag<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
-    }
-}
-
-impl<'a> Tag<'a> {
-    fn new(raw_tag: &'a str) -> Self {
-        Self {
-            value: escape_string_content(raw_tag),
-        }
-    }
-}
-
-impl<'a> Deref for Tag<'a> {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.value.as_ref()
-    }
-}
-
-impl<'a> AsRef<str> for Tag<'a> {
-    fn as_ref(&self) -> &str {
-        self.value.as_ref()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum ContentNode<'a> {
-    Text(Cow<'a, str>),
-    Link {
-        text: Cow<'a, str>,
-        target: Cow<'a, str>,
-    },
-}
-
-impl<'a> ContentNode<'a> {
-    fn text_node(text: &'a str) -> Self {
-        Self::Text(escape_string_content(text))
-    }
-
-    fn link_node(text: &'a str, target: &'a str) -> Self {
-        Self::Link {
-            text: escape_string_content(text),
-            target: escape_string_content(target),
-        }
-    }
-}
 
 fn parse_escaped_char(input: &str) -> IResult<&str, char> {
     preceded(char('\\'), anychar)(input)
@@ -189,8 +105,8 @@ mod tests {
     };
 
     use crate::{
-        metadata::Metadata,
-        passage::{find_content_block, parse_passage, parse_tags, parse_title, Passage, Tag},
+        parser::passage::{find_content_block, parse_passage, parse_tags, parse_title},
+        Metadata, Passage, Tag,
     };
 
     use super::{parse_link_node, parse_text_node, ContentNode};
