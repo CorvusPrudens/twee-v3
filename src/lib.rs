@@ -21,7 +21,7 @@ pub mod iter;
 mod parser;
 mod utils;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Metadata<'a> {
     content: &'a str,
 }
@@ -32,7 +32,7 @@ impl<'a> Metadata<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Passage<'a> {
     title: Cow<'a, str>,
     tags: Vec<Tag<'a>>,
@@ -77,7 +77,7 @@ impl<'a> Display for Passage<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Tag<'a> {
     value: Cow<'a, str>,
 }
@@ -110,7 +110,7 @@ impl<'a> AsRef<str> for Tag<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ContentNode<'a> {
     Text(Cow<'a, str>),
     Link {
@@ -141,7 +141,7 @@ impl<'a> Display for ContentNode<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Story<'a> {
     title: Option<Cow<'a, str>>,
     start: Option<Cow<'a, str>>,
