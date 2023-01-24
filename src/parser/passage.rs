@@ -10,7 +10,7 @@ use nom::{
 
 use crate::{
     parser::metadata::parse_metadata,
-    utils::{split_escaped, take_until_pattern, until_link1},
+    utils::{split_escaped, until_link1},
     ContentNode, Passage, Tag,
 };
 
@@ -39,7 +39,13 @@ fn parse_title(input: &str) -> IResult<&str, &str> {
 }
 
 fn find_content_block(input: &str) -> IResult<&str, &str> {
-    take_until_pattern(preceded(newline, tag("::")))(input)
+    match input.find("\r\n::") {
+        Some(index) => Ok((&input[index..], &input[..index])),
+        None => match input.find("\n::") {
+            Some(index) => Ok((&input[index..], &input[..index])),
+            None => Ok(("", input)),
+        },
+    }
 }
 
 fn parse_text_node(input: &str) -> IResult<&str, ContentNode> {
@@ -306,5 +312,29 @@ mod tests {
             parse_link_node(input),
             Ok(("", ContentNode::link_node("going somewhere?", "A page")))
         )
+    }
+
+    #[test]
+    fn test_find_content_block_weird_char() {
+        let input = "C'est ça\n:: Okay";
+
+        assert_eq!(find_content_block(input), Ok(("\n:: Okay", "C'est ça")));
+    }
+
+    #[test]
+    fn test_find_content_block_weird_char_end_text() {
+        let input = "C'est ça";
+
+        assert_eq!(find_content_block(input), Ok(("", "C'est ça")));
+    }
+
+    #[test]
+    fn test_parse_passage_weird_char() {
+        let input = r#":: Aller au bar {"position":"800,300","size":"100,100"}
+Bon, il est toujours possible de rencontrer des inconnus !
+Et ça tombe bien, tu connais un PMU juste en bas de chez toi !
+La majeur parti de ses clients sont des poivreaux assez sympathiques et ça tombe bien, tu en est également un."#;
+
+        assert!(parse_passage(input).is_ok());
     }
 }
