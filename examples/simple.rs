@@ -6,16 +6,13 @@ fn main() {
     let story = Story::try_from(SAMPLE).unwrap();
     let title = story.title().unwrap();
     let start = story.start().unwrap();
+
     println!("Let's tell the story [{title}]");
-
-    let mut count = 0;
-
-    for node in start.nodes() {
+    for (count, node) in start.nodes().iter().enumerate() {
         match node {
             ContentNode::Text(text) => print!("{text}"),
             ContentNode::Link { text, target: _ } => {
                 print!("{emoji} {text}", emoji = number_to_emoji(count));
-                count += 1;
             }
         }
     }
@@ -34,7 +31,7 @@ fn main() {
     }
 }
 
-fn number_to_emoji(number: u8) -> &'static str {
+fn number_to_emoji(number: usize) -> &'static str {
     match number {
         0 => "0️⃣",
         1 => "1️⃣",

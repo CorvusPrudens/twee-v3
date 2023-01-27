@@ -11,7 +11,11 @@
 //! }
 //! ```
 
-use std::{borrow::Cow, collections::HashMap, fmt::Display, ops::Deref};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::{Deref, Range},
+};
 
 use iter::LinkIterator;
 use utils::escape_string_content;
@@ -22,53 +26,109 @@ mod parser;
 mod utils;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Metadata<'a> {
-    content: &'a str,
+enum TextBlock {
+    Owned(String),
+    Borrowed(Range<usize>),
 }
 
-impl<'a> Metadata<'a> {
-    pub(crate) fn new(content: &'a str) -> Self {
-        Self { content }
+impl TextBlock {
+    pub fn owned(s: String) -> Self {
+        Self::Owned(match escape_string_content(&s) {
+            Some(escaped) => escaped,
+            None => s,
+        })
+    }
+
+    pub fn borrowed(original: &str, substring: &str) -> Self {
+        match escape_string_content(substring) {
+            // If the content is escaped, its a copy.
+            Some(escaped) => Self::Owned(escaped),
+            None => {
+                let original_begin = original.as_ptr() as usize;
+                let original_end = original_begin + original.len();
+                let substring_begin = substring.as_ptr() as usize;
+                let substring_end = substring_begin + substring.len();
+                if substring_begin < original_begin || substring_end > original_end {
+                    // substring is not a substring of original, so we need to copy it.
+                    Self::Owned(substring.to_owned())
+                } else {
+                    Self::Borrowed(substring_begin - original_begin..substring_end - original_begin)
+                }
+            }
+        }
+    }
+
+    pub fn as_str<'a>(&'a self, original: &'a str) -> &'a str {
+        match self {
+            TextBlock::Owned(s) => s.as_str(),
+            TextBlock::Borrowed(r) => &original[r.clone()],
+        }
+    }
+}
+
+impl From<&str> for TextBlock {
+    fn from(value: &str) -> Self {
+        TextBlock::Owned(value.to_owned())
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Passage<'a> {
-    title: Cow<'a, str>,
-    tags: Vec<Tag<'a>>,
-    metadata: Option<Metadata<'a>>,
-    content: Vec<ContentNode<'a>>,
+pub struct Metadata<T> {
+    content: T,
 }
 
-impl<'a> Passage<'a> {
+impl<T> Metadata<T> {
+    pub(crate) fn new(content: T) -> Self {
+        Self { content }
+    }
+}
+
+impl Metadata<TextBlock> {
+    fn as_borrowed<'a>(&'a self, original: &'a str) -> Metadata<&str> {
+        Metadata::new(self.content.as_str(original))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Passage<T> {
+    title: T,
+    tags: Vec<Tag<T>>,
+    metadata: Option<Metadata<T>>,
+    content: Vec<ContentNode<T>>,
+}
+
+impl<T> Passage<T> {
     fn new(
-        raw_title: &'a str,
-        tags: Vec<Tag<'a>>,
-        metadata: Option<Metadata<'a>>,
-        content: Vec<ContentNode<'a>>,
+        title: T,
+        tags: Vec<Tag<T>>,
+        metadata: Option<Metadata<T>>,
+        content: Vec<ContentNode<T>>,
     ) -> Self {
         Self {
-            title: escape_string_content(raw_title),
+            title,
             tags,
             metadata,
             content,
         }
     }
 
-    pub fn title(&self) -> &str {
+    pub fn title(&self) -> &T {
         &self.title
     }
 
-    pub fn nodes(&self) -> &[ContentNode] {
+    pub fn nodes(&self) -> &[ContentNode<T>] {
         &self.content
     }
 
-    pub fn links(&self) -> LinkIterator {
+    pub fn links(&self) -> LinkIterator<T> {
         LinkIterator::new(&self.content)
     }
 }
 
-impl<'a> Display for Passage<'a> {
+impl<T> Display for Passage<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for node in &self.content {
             write!(f, "{node}")?;
@@ -77,62 +137,67 @@ impl<'a> Display for Passage<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Tag<'a> {
-    value: Cow<'a, str>,
+impl<'a> Passage<TextBlock> {
+    fn as_borrowed(&'a self, original: &'a str) -> Passage<&'a str> {
+        Passage {
+            title: self.title.as_str(original),
+            tags: self.tags.iter().map(|t| t.as_borrowed(original)).collect(),
+            metadata: self.metadata.as_ref().map(|m| m.as_borrowed(original)),
+            content: self
+                .content
+                .iter()
+                .map(|n| n.as_borrowed(original))
+                .collect(),
+        }
+    }
 }
 
-impl<'a> Display for Tag<'a> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Tag<T> {
+    value: T,
+}
+
+impl<T> Display for Tag<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.value)
     }
 }
 
-impl<'a> Tag<'a> {
-    fn new(raw_tag: &'a str) -> Self {
-        Self {
-            value: escape_string_content(raw_tag),
-        }
+impl<T> Tag<T> {
+    fn new(value: T) -> Self {
+        Self { value }
     }
 }
 
-impl<'a> Deref for Tag<'a> {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.value.as_ref()
-    }
-}
-
-impl<'a> AsRef<str> for Tag<'a> {
-    fn as_ref(&self) -> &str {
-        self.value.as_ref()
+impl Tag<TextBlock> {
+    fn as_borrowed<'a>(&'a self, original: &'a str) -> Tag<&str> {
+        Tag::new(self.value.as_str(original))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ContentNode<'a> {
-    Text(Cow<'a, str>),
-    Link {
-        text: Cow<'a, str>,
-        target: Cow<'a, str>,
-    },
+pub enum ContentNode<T> {
+    Text(T),
+    Link { text: T, target: T },
 }
 
-impl<'a> ContentNode<'a> {
-    fn text_node(text: &'a str) -> Self {
-        Self::Text(escape_string_content(text))
+impl<T> ContentNode<T> {
+    fn text_node(text: T) -> Self {
+        Self::Text(text)
     }
 
-    fn link_node(text: &'a str, target: &'a str) -> Self {
-        Self::Link {
-            text: escape_string_content(text),
-            target: escape_string_content(target),
-        }
+    fn link_node(text: T, target: T) -> Self {
+        Self::Link { text, target }
     }
 }
 
-impl<'a> Display for ContentNode<'a> {
+impl<T> Display for ContentNode<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ContentNode::Text(text) => write!(f, "{text}"),
@@ -141,20 +206,41 @@ impl<'a> Display for ContentNode<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Story<'a> {
-    title: Option<Cow<'a, str>>,
-    start: Option<Cow<'a, str>>,
-    passages: HashMap<String, Passage<'a>>,
+impl ContentNode<TextBlock> {
+    fn as_borrowed<'a>(&'a self, original: &'a str) -> ContentNode<&str> {
+        match self {
+            ContentNode::Text(text) => ContentNode::Text(text.as_str(original)),
+            ContentNode::Link { text, target } => ContentNode::Link {
+                text: text.as_str(original),
+                target: target.as_str(original),
+            },
+        }
+    }
 }
 
-impl<'a> Story<'a> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Story<T>
+where
+    T: Deref<Target = str>,
+{
+    content: T,
+    title: Option<TextBlock>,
+    start: Option<TextBlock>,
+    passages: HashMap<String, Passage<TextBlock>>,
+}
+
+impl<T> Story<T>
+where
+    T: Deref<Target = str>,
+{
     fn new(
-        title: Option<Cow<'a, str>>,
-        start: Option<Cow<'a, str>>,
-        passages: HashMap<String, Passage<'a>>,
+        content: T,
+        title: Option<TextBlock>,
+        start: Option<TextBlock>,
+        passages: HashMap<String, Passage<TextBlock>>,
     ) -> Self {
         Self {
+            content,
             title,
             start,
             passages,
@@ -162,17 +248,30 @@ impl<'a> Story<'a> {
     }
 
     pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
+        self.title.as_ref().map(|block| block.as_str(&self.content))
     }
 
-    pub fn start(&self) -> Option<&Passage> {
-        match &self.start {
-            Some(start) => self.passages.get(&start[..]),
-            None => None,
+    pub fn start(&self) -> Option<Passage<&str>> {
+        self.start.as_ref().and_then(|block| {
+            let start = block.as_str(&self.content);
+            self.get_passage(start)
+        })
+    }
+
+    pub fn get_passage(&self, name: &str) -> Option<Passage<&str>> {
+        self.passages
+            .get(name)
+            .map(|passage| passage.as_borrowed(&self.content))
+    }
+}
+
+impl Story<&str> {
+    pub fn into_owned(self) -> Story<String> {
+        Story {
+            content: self.content.to_owned(),
+            title: self.title,
+            start: self.start,
+            passages: self.passages,
         }
-    }
-
-    pub fn get_passage(&self, name: &str) -> Option<&Passage> {
-        self.passages.get(name)
     }
 }

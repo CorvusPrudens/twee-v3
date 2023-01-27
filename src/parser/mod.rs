@@ -6,7 +6,7 @@ pub(crate) mod metadata;
 pub(crate) mod passage;
 pub(crate) mod story;
 
-impl<'a> TryFrom<&'a str> for Story<'a> {
+impl<'a> TryFrom<&'a str> for Story<&'a str> {
     type Error = ParsingError<'a>;
 
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {

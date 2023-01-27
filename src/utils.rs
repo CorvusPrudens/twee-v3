@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use nom::{
     bytes::complete::escaped_transform,
     character::complete::{anychar, char, none_of},
@@ -94,18 +92,15 @@ pub(crate) fn split_escaped<'a>(input: &'a str, pat: &str) -> Option<(&'a str, &
     }
 }
 
-pub(crate) fn escape_string_content(input: &str) -> Cow<str> {
+pub(crate) fn escape_string_content(input: &str) -> Option<String> {
     fn escape_replace(input: &str) -> IResult<&str, String> {
         escaped_transform(none_of(r"\"), '\\', anychar)(input)
     }
 
     if input.contains('\\') {
-        escape_replace(input).map_or_else(
-            |_| Cow::Borrowed(input),
-            |(_, replaced)| Cow::Owned(replaced),
-        )
+        escape_replace(input).map_or_else(|_| None, |(_, replaced)| Some(replaced))
     } else {
-        Cow::Borrowed(input)
+        None
     }
 }
 

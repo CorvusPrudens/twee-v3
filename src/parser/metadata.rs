@@ -2,7 +2,7 @@ use nom::IResult;
 
 use crate::{utils::take_delimited_greedy, Metadata};
 
-pub(crate) fn parse_metadata(input: &str) -> IResult<&str, Metadata> {
+pub(crate) fn parse_metadata(input: &str) -> IResult<&str, Metadata<&str>> {
     let (input, content) = take_delimited_greedy('{', '}')(input)?;
     Ok((input, Metadata::new(content)))
 }

@@ -1,17 +1,17 @@
 use crate::ContentNode;
 
-pub struct LinkIterator<'a> {
-    nodes: &'a [ContentNode<'a>],
+pub struct LinkIterator<'a, T> {
+    nodes: &'a [ContentNode<T>],
 }
 
-impl<'a> LinkIterator<'a> {
-    pub fn new(nodes: &'a [ContentNode<'a>]) -> Self {
+impl<'a, T> LinkIterator<'a, T> {
+    pub fn new(nodes: &'a [ContentNode<T>]) -> Self {
         Self { nodes }
     }
 }
 
-impl<'a> Iterator for LinkIterator<'a> {
-    type Item = Link<'a>;
+impl<'a, T> Iterator for LinkIterator<'a, T> {
+    type Item = Link<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let link;
@@ -31,7 +31,7 @@ impl<'a> Iterator for LinkIterator<'a> {
     }
 }
 
-pub struct Link<'a> {
-    pub text: &'a str,
-    pub target: &'a str,
+pub struct Link<'a, T> {
+    pub text: &'a T,
+    pub target: &'a T,
 }

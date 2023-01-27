@@ -18,12 +18,12 @@ fn parse_escaped_char(input: &str) -> IResult<&str, char> {
     preceded(char('\\'), anychar)(input)
 }
 
-fn parse_tag(input: &str) -> IResult<&str, Tag> {
+fn parse_tag(input: &str) -> IResult<&str, Tag<&str>> {
     let parse_tag = recognize(many1_count(alt((parse_escaped_char, none_of(" ]")))));
     map(parse_tag, Tag::new)(input)
 }
 
-pub fn parse_tags(input: &str) -> IResult<&str, Vec<Tag>> {
+pub fn parse_tags(input: &str) -> IResult<&str, Vec<Tag<&str>>> {
     let each_tags = separated_list0(tag(" "), parse_tag);
 
     let mut parse_tags = delimited(tag("["), each_tags, tag("]"));
@@ -48,12 +48,12 @@ fn find_content_block(input: &str) -> IResult<&str, &str> {
     }
 }
 
-fn parse_text_node(input: &str) -> IResult<&str, ContentNode> {
+fn parse_text_node(input: &str) -> IResult<&str, ContentNode<&str>> {
     let (input, text) = until_link1(input)?;
     Ok((input, ContentNode::text_node(text)))
 }
 
-fn parse_link_node<'a>(input: &'a str) -> IResult<&str, ContentNode> {
+fn parse_link_node<'a>(input: &'a str) -> IResult<&str, ContentNode<&str>> {
     let parse_link_content = recognize(many1_count(alt((parse_escaped_char, none_of("\n\r]")))));
 
     let (input, link_content) = delimited(tag("[["), parse_link_content, tag("]]"))(input)?;
@@ -72,11 +72,11 @@ fn parse_link_node<'a>(input: &'a str) -> IResult<&str, ContentNode> {
     Ok((input, ContentNode::link_node(text, target)))
 }
 
-fn parse_node(input: &str) -> IResult<&str, ContentNode> {
+fn parse_node(input: &str) -> IResult<&str, ContentNode<&str>> {
     alt((parse_text_node, parse_link_node))(input)
 }
 
-pub fn parse_passage(input: &str) -> IResult<&str, Passage> {
+pub fn parse_passage(input: &str) -> IResult<&str, Passage<&str>> {
     let (input, title) = parse_title(input)?;
     let (input, _) = space0(input)?;
     let (input, tags) = opt(parse_tags)(input)?;
@@ -149,13 +149,6 @@ mod tests {
                 ]
             ))
         );
-    }
-
-    #[test]
-    fn test_tag_from_escapable_string_get_escaped() {
-        let tag = Tag::new(r"test\]");
-
-        assert_eq!("test]", tag.as_ref());
     }
 
     #[test]

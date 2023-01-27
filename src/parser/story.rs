@@ -14,15 +14,14 @@ use nom::{
 use serde_json::Value;
 
 use crate::{
-    parser::passage::parse_passage,
-    utils::{escape_string_content, take_delimited_greedy},
-    Passage, Story,
+    parser::passage::parse_passage, utils::take_delimited_greedy, ContentNode, Metadata, Passage,
+    Story, Tag, TextBlock,
 };
 
 enum StoryBlock<'a> {
-    Title(Cow<'a, str>),
-    StoryData(StoryData<'a>),
-    Passage(Passage<'a>),
+    Title(&'a str),
+    StoryData(StoryData2),
+    Passage(Passage<&'a str>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -30,16 +29,21 @@ struct StoryData<'a> {
     start: Option<Cow<'a, str>>,
 }
 
-fn parse_story_title(input: &str) -> IResult<&str, Cow<str>> {
+#[derive(Debug, PartialEq, Eq)]
+struct StoryData2 {
+    start: Option<String>,
+}
+
+fn parse_story_title(input: &str) -> IResult<&str, &str> {
     let (input, _) = nom::sequence::pair(tag(":: StoryTitle"), line_ending)(input)?;
 
     let (input, title) = not_line_ending(input)?;
     let (input, _) = multispace0(input)?;
 
-    Ok((input, escape_string_content(title)))
+    Ok((input, title))
 }
 
-fn parse_story_data(input: &str) -> IResult<&str, StoryData> {
+fn parse_story_data(input: &str) -> IResult<&str, StoryData2> {
     let (input, _) = nom::sequence::pair(tag(":: StoryData"), line_ending)(input)?;
     let (input, data) = take_delimited_greedy('{', '}')(input)?;
     let (input, _) = multispace0(input)?;
@@ -51,9 +55,9 @@ fn parse_story_data(input: &str) -> IResult<&str, StoryData> {
     let start = dictionary
         .get("start")
         .and_then(|value| value.as_str())
-        .map(|value| Cow::Owned(escape_string_content(value).into_owned()));
+        .map(|value| value.to_string());
 
-    let data = StoryData { start };
+    let data = StoryData2 { start };
 
     Ok((input, data))
 }
@@ -66,7 +70,8 @@ fn parse_story_block(input: &str) -> IResult<&str, StoryBlock> {
     ))(input)
 }
 
-pub fn parse_story(input: &str) -> IResult<&str, Story> {
+pub fn parse_story(input: &str) -> IResult<&str, Story<&str>> {
+    let original = input;
     let mut title = None;
     let mut start = None;
     let mut passages = HashMap::new();
@@ -83,15 +88,45 @@ pub fn parse_story(input: &str) -> IResult<&str, Story> {
         }
         input = i;
     }
+    let title = title.map(|title| TextBlock::borrowed(original, title));
+    let start = start.map(TextBlock::owned);
+    let passages: HashMap<_, _> = passages
+        .into_iter()
+        .map(|(key, passage)| (key, passage_as_str_to_blocks(original, passage)))
+        .collect();
 
-    Ok((input, Story::new(title, start, passages)))
+    Ok((input, Story::new(original, title, start, passages)))
+}
+
+fn passage_as_str_to_blocks(original: &str, passage: Passage<&str>) -> Passage<TextBlock> {
+    let title = TextBlock::borrowed(original, passage.title);
+    let tags: Vec<_> = passage
+        .tags
+        .iter()
+        .map(|tag| Tag::new(TextBlock::borrowed(original, tag.value)))
+        .collect();
+    let metadata = passage
+        .metadata
+        .map(|metadata| Metadata::new(TextBlock::borrowed(original, metadata.content)));
+    let content: Vec<_> = passage
+        .content
+        .iter()
+        .map(|node| match node {
+            ContentNode::Text(text) => ContentNode::Text(TextBlock::borrowed(original, text)),
+            ContentNode::Link { text, target } => ContentNode::Link {
+                text: TextBlock::borrowed(original, text),
+                target: TextBlock::borrowed(original, target),
+            },
+        })
+        .collect();
+
+    Passage::new(title, tags, metadata, content)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
-    use super::{parse_story, parse_story_data, parse_story_title, Story, StoryData};
+    use super::{parse_story, parse_story_data, parse_story_title, StoryData2};
 
     const TITLE_AND_DATA: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -123,7 +158,7 @@ mod tests {
             parse_story_data(input),
             Ok((
                 "::",
-                StoryData {
+                StoryData2 {
                     start: Some("Start story".into())
                 }
             ))
@@ -134,17 +169,9 @@ mod tests {
     fn test_parse_story_just_title_and_start() {
         let input = TITLE_AND_DATA;
 
-        assert_eq!(
-            parse_story(input),
-            Ok((
-                "",
-                Story::new(
-                    Some("Test Story".into()),
-                    Some("Start".into()),
-                    HashMap::new()
-                )
-            ))
-        )
+        let (_, story) = parse_story(input).unwrap();
+
+        assert_eq!(Some("Test Story"), story.title());
     }
 
     #[test]
@@ -154,10 +181,13 @@ mod tests {
         let (remaining_input, story) = parse_story(input).unwrap();
         assert_eq!(remaining_input, "");
         assert_eq!(Some("Test Story"), story.title());
-        assert_eq!(Some("Start"), story.start().map(|passage| passage.title()));
+        assert_eq!(
+            Some(&"Start"),
+            story.start().as_ref().map(|passage| passage.title())
+        );
         assert_eq!(4, story.passages.len());
 
-        let start = &story.passages["Start"];
-        assert_eq!("Start", start.title());
+        let start = story.get_passage("Start").unwrap();
+        assert_eq!(&"Start", start.title());
     }
 }
