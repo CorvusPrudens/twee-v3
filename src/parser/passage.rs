@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{anychar, char, multispace0, newline, none_of, space0},
+    character::complete::{anychar, char, line_ending, multispace0, none_of, space0},
     combinator::{map, opt, recognize, value},
     multi::{many1_count, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded},
@@ -82,7 +82,7 @@ pub fn parse_passage(input: &str) -> IResult<&str, Passage<&str>> {
     let (input, tags) = opt(parse_tags)(input)?;
     let (input, _) = space0(input)?;
     let (input, metadata) = opt(parse_metadata)(input)?;
-    let (input, _) = recognize(pair(space0, newline))(input)?;
+    let (input, _) = recognize(pair(space0, line_ending))(input)?;
     let (input, content) = find_content_block(input)?;
     let (input, _) = multispace0(input)?;
 
