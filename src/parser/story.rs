@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use nom::{
     branch::alt,
@@ -20,17 +20,12 @@ use crate::{
 
 enum StoryBlock<'a> {
     Title(&'a str),
-    StoryData(StoryData2),
+    StoryData(StoryData),
     Passage(Passage<&'a str>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct StoryData<'a> {
-    start: Option<Cow<'a, str>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct StoryData2 {
+struct StoryData {
     start: Option<String>,
 }
 
@@ -43,7 +38,7 @@ fn parse_story_title(input: &str) -> IResult<&str, &str> {
     Ok((input, title))
 }
 
-fn parse_story_data(input: &str) -> IResult<&str, StoryData2> {
+fn parse_story_data(input: &str) -> IResult<&str, StoryData> {
     let (input, _) = nom::sequence::pair(tag(":: StoryData"), line_ending)(input)?;
     let (input, data) = take_delimited_greedy('{', '}')(input)?;
     let (input, _) = multispace0(input)?;
@@ -57,7 +52,7 @@ fn parse_story_data(input: &str) -> IResult<&str, StoryData2> {
         .and_then(|value| value.as_str())
         .map(|value| value.to_string());
 
-    let data = StoryData2 { start };
+    let data = StoryData { start };
 
     Ok((input, data))
 }
@@ -126,7 +121,7 @@ fn passage_as_str_to_blocks(original: &str, passage: Passage<&str>) -> Passage<T
 #[cfg(test)]
 mod tests {
 
-    use super::{parse_story, parse_story_data, parse_story_title, StoryData2};
+    use super::{parse_story, parse_story_data, parse_story_title, StoryData};
 
     const TITLE_AND_DATA: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -158,7 +153,7 @@ mod tests {
             parse_story_data(input),
             Ok((
                 "::",
-                StoryData2 {
+                StoryData {
                     start: Some("Start story".into())
                 }
             ))
