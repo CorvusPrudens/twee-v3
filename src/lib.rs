@@ -263,6 +263,13 @@ where
             .get(name)
             .map(|passage| passage.as_borrowed(&self.content))
     }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            story: self,
+            passage_names: self.passages.keys()
+        }
+    }
 }
 
 impl Story<&str> {
@@ -273,5 +280,25 @@ impl Story<&str> {
             start: self.start,
             passages: self.passages,
         }
+    }
+}
+
+pub struct Iter<'a, T>
+where
+    T: Deref<Target = str>,
+{
+    story: &'a Story<T>,
+    passage_names: std::collections::hash_map::Keys<'a, String, Passage<TextBlock>>
+}
+
+impl<'a, T> std::iter::Iterator for Iter<'a, T>
+where
+    T: Deref<Target = str>,
+{
+    type Item = Passage<&'a str>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.passage_names.next().and_then(|name| {
+            self.story.get_passage(name)
+        })
     }
 }
